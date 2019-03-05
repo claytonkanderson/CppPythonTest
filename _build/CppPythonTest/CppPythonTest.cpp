@@ -4,85 +4,152 @@
 #include <iostream>
 #include <Python.h>
 #include <ArrayObject.h>
+#include "CppPythonTest.h"
 
-// Code adapted from https://www.coveros.com/calling-python-code-from-c/
+////////////////////////////////////////////////////////////////////////////////
 
-int main()
+class State
 {
-	printf("Calling Python to find the sum of 2 and 2.\n");
+public:
+	float posx;
+	float posy;
+	float speed;
+	float theta;
+	float goalx;
+	float goaly;
+};
 
-	// Initialize the Python interpreter.
-	Py_Initialize();
+////////////////////////////////////////////////////////////////////////////////
 
-	// Create some Python objects that will later be assigned values.
-	PyObject *pName, *pModule, *pDict, *pValue;
+class Experience
+{
+public:
+	State State_;
+	float Steering;
+	float Throttle;
+	float Reward;
+	State NextState;
+};
 
-	// Convert the file name to a Python string.
-	pName = PyUnicode_FromString("Wrapper");
+////////////////////////////////////////////////////////////////////////////////
 
-	// Import the file as a Python module.
-	pModule = PyImport_Import(pName);
-	if (pModule == nullptr)
+class Agent
+{
+public:
+	Agent()
 	{
-		PyErr_Print();
-		std::exit(1);
+		Py_Initialize();
+		auto pName = PyUnicode_FromString("Wrapper");
+		auto pModule = PyImport_Import(pName);
+		auto pDict = PyModule_GetDict(pModule);
+
+		auto pInitializeFunc = PyDict_GetItemString(pDict, "Initialize");
+		auto pInitializeArgs = PyTuple_New(0);
+		Wrapper = PyObject_CallObject(pInitializeFunc, pInitializeArgs);
+
+		GetActionFunc = PyDict_GetItemString(pDict, "GetAction");
+		ProcessSARSFunc = PyDict_GetItemString(pDict, "Update");
+	}
+	~Agent()
+	{
+
 	}
 
-	// Create a dictionary for the contents of the module.
-	pDict = PyModule_GetDict(pModule);
+	float Train(Experience * experience);
+	void ChooseAction(float & outSteering, float & outThrottle, State * state);
 
-	// Get the add method from the dictionary.
-	auto pInitializeFunc = PyDict_GetItemString(pDict, "Initialize");
-	auto pGetActionFunc = PyDict_GetItemString(pDict, "GetAction");
+	PyObject * Wrapper;
+	PyObject * GetActionFunc;
+	PyObject * ProcessSARSFunc;
+};
 
-	// Create a Python tuple to hold the arguments to the method.
-	auto pInitializeArgs = PyTuple_New(0);
-	auto pWrapper = PyObject_CallObject(pInitializeFunc, pInitializeArgs);
+////////////////////////////////////////////////////////////////////////////////
 
-	// Create state representation using list
+float Agent::Train(Experience * experience)
+{
+	auto pProcessArgs = PyTuple_New(4);
+
+	const size_t cNumStateParams = 6;
+	const size_t cNumActions = 2;
+
+	auto pStateList = PyList_New(cNumStateParams);
+	PyList_SetItem(pStateList, 0, PyFloat_FromDouble(experience->State_.posx));
+	PyList_SetItem(pStateList, 1, PyFloat_FromDouble(experience->State_.posy));
+	PyList_SetItem(pStateList, 2, PyFloat_FromDouble(experience->State_.speed));
+	PyList_SetItem(pStateList, 3, PyFloat_FromDouble(experience->State_.theta));
+	PyList_SetItem(pStateList, 4, PyFloat_FromDouble(experience->State_.goalx));
+	PyList_SetItem(pStateList, 5, PyFloat_FromDouble(experience->State_.goaly));
+
+	auto pNextStateList = PyList_New(cNumStateParams);
+	PyList_SetItem(pNextStateList, 0, PyFloat_FromDouble(experience->NextState.posx));
+	PyList_SetItem(pNextStateList, 1, PyFloat_FromDouble(experience->NextState.posy));
+	PyList_SetItem(pNextStateList, 2, PyFloat_FromDouble(experience->NextState.speed));
+	PyList_SetItem(pNextStateList, 3, PyFloat_FromDouble(experience->NextState.theta));
+	PyList_SetItem(pNextStateList, 4, PyFloat_FromDouble(experience->NextState.goalx));
+	PyList_SetItem(pNextStateList, 5, PyFloat_FromDouble(experience->NextState.goaly));
+
+	auto pActionList = PyList_New(cNumActions);
+	PyList_SetItem(pNextStateList, 0, PyFloat_FromDouble(experience->Steering));
+	PyList_SetItem(pNextStateList, 1, PyFloat_FromDouble(experience->Throttle));
+
+	PyTuple_SetItem(pProcessArgs, 0, pStateList);
+	PyTuple_SetItem(pProcessArgs, 1, pActionList);
+	PyTuple_SetItem(pProcessArgs, 2, PyFloat_FromDouble(experience->Reward));
+	PyTuple_SetItem(pProcessArgs, 3, pNextStateList);
+
+	auto error = PyObject_CallObject(ProcessSARSFunc, pProcessArgs);
+
+	return PyFloat_AsDouble(error);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+void Agent::ChooseAction(float & outSteering, float & outThrottle, State * state)
+{
 	const size_t cNumStateParams = 6;
 	auto pStateList = PyList_New(cNumStateParams);
-	
-	auto tempValue = PyLong_FromLong(0);
-	for (auto i = 0; i < cNumStateParams; i++)
-		PyList_SetItem(pStateList, i, tempValue);
+	PyList_SetItem(pStateList, 0, PyFloat_FromDouble(state->posx));
+	PyList_SetItem(pStateList, 1, PyFloat_FromDouble(state->posy));
+	PyList_SetItem(pStateList, 2, PyFloat_FromDouble(state->speed));
+	PyList_SetItem(pStateList, 3, PyFloat_FromDouble(state->theta));
+	PyList_SetItem(pStateList, 4, PyFloat_FromDouble(state->goalx));
+	PyList_SetItem(pStateList, 5, PyFloat_FromDouble(state->goaly));
 
 	auto pGetActionArgs = PyTuple_New(2);
-	PyTuple_SetItem(pGetActionArgs, 0, pWrapper);
+	PyTuple_SetItem(pGetActionArgs, 0, Wrapper);
 	PyTuple_SetItem(pGetActionArgs, 1, pStateList);
 
-	auto pActionChoices = PyObject_CallObject(pGetActionFunc, pGetActionArgs);
+	auto pActionChoices = (PyArrayObject *)PyObject_CallObject(GetActionFunc, pGetActionArgs);
 
-	if (pActionChoices == nullptr)
-	{
-		PyErr_Print();
-		std::exit(1);
-	}
-
-	float steering = *((float *)PyArray_GETPTR1(pActionChoices, 0));
-	float gas = *((float *)PyArray_GETPTR1(pActionChoices, 1));
-
-	printf("Steering : %f\n", steering);
-	printf("Gas : %f\n", gas);
-
-	// Convert 2 to a Python integer.
-	//pValue = PyLong_FromLong(2);
-
-	// Set the Python int as the first and second arguments to the method.
-	// Call the function with the arguments.
-	//PyObject* pResult = PyObject_CallObject(pFunc, pArgs);
-
-	// Print a message if calling the method failed.
-	//if (pResult == NULL)
-	//	printf("Calling the add method failed.\n");
-
-	// Convert the result to a long from a Python object.
-	//long result = PyLong_AsLong(pResult);
-
-	// Destroy the Python interpreter.
-	// Note - See https://stackoverflow.com/questions/27844676/assertionerror-3-x-only-when-calling-py-finalize-with-threads
-	Py_DECREF(PyImport_ImportModule("threading"));
-	Py_Finalize();
-
-	return 0;
+	outSteering = *((float *)PyArray_GETPTR1(pActionChoices, 0));
+	outThrottle = *((float *)PyArray_GETPTR1(pActionChoices, 1));
 }
+
+////////////////////////////////////////////////////////////////////////////////
+
+CPPPYTHONTEST_API void * AgentInit()
+{
+	return new Agent();
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+CPPPYTHONTEST_API void AgentTrain(float & outError, void * agent, void * experience)
+{
+	auto experience_ = reinterpret_cast<Experience *>(experience);
+	auto agent_ = reinterpret_cast<Agent *>(agent);
+	
+	outError = agent_->Train(experience_);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+CPPPYTHONTEST_API void AgentChooseAction(float & outSteering, float & outThrottle, void * agent, void * state)
+{
+	auto state_ = reinterpret_cast<State *>(state);
+	auto agent_ = reinterpret_cast<Agent *>(agent);
+
+	agent_->ChooseAction(outSteering, outThrottle, state_);
+}
+
+////////////////////////////////////////////////////////////////////////////////
