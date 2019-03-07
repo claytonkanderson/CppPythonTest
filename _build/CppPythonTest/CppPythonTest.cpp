@@ -41,6 +41,18 @@ public:
 		Py_Initialize();
 		auto pName = PyUnicode_FromString("Wrapper");
 		auto pModule = PyImport_Import(pName);
+
+		PyObject *ptype, *pvalue, *ptraceback;
+		PyErr_Fetch(&ptype, &pvalue, &ptraceback);
+
+		//Get error message
+		PyObject* str_exc_value = PyObject_Repr(pvalue);
+		PyObject* pyExcValueStr = PyUnicode_AsEncodedString(str_exc_value, "utf-8", "Error ~");
+		const char *strExcValue = PyBytes_AS_STRING(pyExcValueStr);
+		std::string myStr(strExcValue);
+
+		printf("String : %s", strExcValue);
+
 		auto pDict = PyModule_GetDict(pModule);
 
 		auto pInitializeFunc = PyDict_GetItemString(pDict, "Initialize");
@@ -49,6 +61,8 @@ public:
 
 		GetActionFunc = PyDict_GetItemString(pDict, "GetAction");
 		ProcessSARSFunc = PyDict_GetItemString(pDict, "Update");
+
+		printf("Doesn't seem to have been a problem.\n");
 	}
 	~Agent()
 	{
@@ -129,6 +143,19 @@ void Agent::ChooseAction(float & outSteering, float & outThrottle, State * state
 
 CPPPYTHONTEST_API void * AgentInit()
 {
+	//Py_Initialize();
+	//auto pName = PyUnicode_FromString("Wrapper");
+	//auto pModule = PyImport_Import(pName);
+
+	//PyObject *ptype, *pvalue, *ptraceback;
+	//PyErr_Fetch(&ptype, &pvalue, &ptraceback);
+
+	////Get error message
+	//PyObject* str_exc_value = PyObject_Repr(pvalue);
+	//PyObject* pyExcValueStr = PyUnicode_AsEncodedString(str_exc_value, "utf-8", "Error ~");
+	//const char *strExcValue = PyBytes_AS_STRING(pyExcValueStr);
+
+	//return (void *)strExcValue;
 	return new Agent();
 }
 
@@ -153,3 +180,8 @@ CPPPYTHONTEST_API void AgentChooseAction(float & outSteering, float & outThrottl
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+
+int main()
+{
+	AgentInit();
+}
