@@ -1,0 +1,69 @@
+syntax = "proto3";
+
+package TrafficAPI;
+
+//
+service SimulationServer 
+{
+
+	// 
+	rpc Tick (TickRequest) returns (TickResponse) {}
+	
+	rpc GetState (VehicleRequest) returns (StateResponse) {}
+}
+
+// 
+message TickRequest 
+{
+	float time_step_seconds = 1;
+}
+
+//
+message TickResponse
+{
+	// Empty
+}
+
+//
+message VehicleRequest
+{
+	// Empty
+}
+
+message Vector4
+{
+	double x = 1;
+	double y = 2;
+	double z = 3;
+	double w = 4;
+}
+
+message Matrix4x4
+{
+	Vector4 Col0 = 1;
+	Vector4 Col1 = 2;
+	Vector4 Col2 = 3;
+	Vector4 Col3 = 4;
+}
+
+message Color
+{
+	int32 r = 1;
+	int32 g = 2;
+	int32 b = 3;
+	int32 a = 4;
+}
+
+//
+message Vehicle
+{
+	Matrix4x4 matrix = 1;
+	float speed_mps = 2;
+	int32 driver_id = 3;
+}
+
+message StateResponse
+{
+	repeated Vehicle vehicles = 1;
+	bool reset = 2;
+}
